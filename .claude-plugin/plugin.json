@@ -1,0 +1,29 @@
+{
+  "name": "rfp-response-skills",
+  "displayName": "RFP Response Skills",
+  "version": "1.0.0",
+  "description": "Agent skills for RFP, tender and bid responses: go/no-go qualification, compliance matrix, buyer and competitor research, executive summaries, contradiction checks, evaluation panel review, SME interview prep and bid reporting. Skills only: no MCP server and no external services.",
+  "author": {
+    "name": "AutoRFP.ai",
+    "email": "support@autorfp.ai",
+    "url": "https://autorfp.ai"
+  },
+  "homepage": "https://autorfp.ai/skills/claude-rfp-skills-bundle",
+  "repository": "https://github.com/AutoRFP/rfp-response-skills",
+  "license": "MIT",
+  "keywords": [
+    "rfp",
+    "tender",
+    "bid",
+    "proposal",
+    "go-no-go",
+    "compliance-matrix",
+    "executive-summary",
+    "bid-management"
+  ],
+  "icon": "assets/icon.png",
+  "documentationUrl": "https://autorfp.ai/blog/how-to-respond-to-an-rfp-with-claude",
+  "supportUrl": "https://autorfp.ai/contact",
+  "privacyPolicyUrl": "https://autorfp.ai/legal/privacy",
+  "termsOfServiceUrl": "https://autorfp.ai/legal/msa"
+}
