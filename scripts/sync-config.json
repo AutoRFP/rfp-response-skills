@@ -1,0 +1,72 @@
+{
+  "siteRepo": "ConquestCapital/site",
+  "siteRef": "origin/main",
+  "filesPath": "frontend/public/skills/files",
+  "skills": [
+    {
+      "slug": "ai-go-no-go-agent-skill",
+      "group": "Qualify"
+    },
+    {
+      "slug": "compliance-matrix-builder-agent-skill",
+      "group": "Requirements"
+    },
+    {
+      "slug": "competitor-intelligence-agent-skill",
+      "group": "Research"
+    },
+    {
+      "slug": "internal-research",
+      "group": "Research",
+      "name": "internal-research"
+    },
+    {
+      "slug": "external-research",
+      "group": "Research"
+    },
+    {
+      "slug": "customer-brief-setup",
+      "group": "Research"
+    },
+    {
+      "slug": "customer-brief-research",
+      "group": "Research"
+    },
+    {
+      "slug": "build-google-dork",
+      "group": "Research"
+    },
+    {
+      "slug": "pdf-insight-finder",
+      "group": "Research"
+    },
+    {
+      "slug": "completed-insight-brief",
+      "group": "Research"
+    },
+    {
+      "slug": "sme-interview-prep",
+      "group": "Write"
+    },
+    {
+      "slug": "rfp-executive-summary-generator-agent-skill",
+      "group": "Write"
+    },
+    {
+      "slug": "response-insight-enricher",
+      "group": "Write"
+    },
+    {
+      "slug": "rfp-contradiction-checker-agent-skill",
+      "group": "Review"
+    },
+    {
+      "slug": "evaluation-panel-review",
+      "group": "Review"
+    },
+    {
+      "slug": "rfp-reporting-bundle",
+      "group": "Report"
+    }
+  ]
+}

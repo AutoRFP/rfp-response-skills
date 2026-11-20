@@ -1,0 +1,157 @@
+#!/usr/bin/env node
+// Sync skills from the AutoRFP.ai marketing site into skills/.
+//
+// The site (ConquestCapital/site) is the source of truth. Its build writes one
+// Claude package per skill page to frontend/public/skills/files/<slug>.skill
+// (a zip). This script reads those zips from a git ref of a local site checkout,
+// so the plugin ships exactly what the site's download buttons ship.
+//
+// Usage:
+//   node scripts/sync-site-skills.mjs [--site <path>] [--ref <git ref>] [--no-fetch]
+//
+// --site      path to a ConquestCapital/site checkout (default: $SITE_DIR, then ../site)
+// --ref       git ref to read (default: siteRef in scripts/sync-config.json)
+// --no-fetch  skip `git fetch origin main` in the site checkout
+//
+// Never edit files under skills/ by hand: change the skill on the site, merge,
+// then run this script again.
+
+import { execFileSync } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { RESERVED_WORDS, SKILL_NAME, readSkillFrontmatter } from './lib/frontmatter.mjs';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const config = JSON.parse(readFileSync(join(root, 'scripts/sync-config.json'), 'utf8'));
+const skillsDir = join(root, 'skills');
+const IGNORED = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini', '__MACOSX']);
+
+function arg(flag) {
+  const i = process.argv.indexOf(flag);
+  return i === -1 ? undefined : process.argv[i + 1];
+}
+
+function git(site, args, opts = {}) {
+  return execFileSync('git', ['-C', site, ...args], { maxBuffer: 64 * 1024 * 1024, ...opts });
+}
+
+function findSite() {
+  const candidates = [arg('--site'), process.env.SITE_DIR, join(root, '../site')].filter(Boolean);
+  for (const c of candidates) {
+    const p = resolve(c);
+    if (existsSync(join(p, 'frontend/public/skills/files'))) return p;
+  }
+  throw new Error(`No site checkout found. Pass --site <path to ConquestCapital/site> or set SITE_DIR. Tried: ${candidates.join(', ')}`);
+}
+
+function removeIgnored(dir) {
+  for (const entry of readdirSync(dir)) {
+    const p = join(dir, entry);
+    if (IGNORED.has(entry)) rmSync(p, { recursive: true, force: true });
+    else if (statSync(p).isDirectory()) removeIgnored(p);
+  }
+}
+
+function setFrontmatterName(skillMd, name) {
+  const text = readFileSync(skillMd, 'utf8');
+  const next = text.replace(/^(---\r?\n[\s\S]*?)^name:.*$/m, `$1name: ${name}`);
+  writeFileSync(skillMd, next);
+}
+
+const site = findSite();
+const ref = arg('--ref') ?? config.siteRef;
+if (!process.argv.includes('--no-fetch')) git(site, ['fetch', '--quiet', 'origin', 'main'], { stdio: 'inherit' });
+const sha = git(site, ['rev-parse', ref], { encoding: 'utf8' }).trim();
+console.log(`Site: ${site}\nRef:  ${ref} (${sha})`);
+
+const work = mkdtempSync(join(tmpdir(), 'rfp-skills-sync-'));
+const errors = [];
+const synced = [];
+
+try {
+  for (const entry of config.skills) {
+    const file = `${config.filesPath}/${entry.slug}.skill`;
+    let zip;
+    try {
+      zip = git(site, ['show', `${sha}:${file}`]);
+    } catch {
+      errors.push(`${entry.slug}: ${file} is not in the site at ${sha}. Is the page a draft or comingSoon?`);
+      continue;
+    }
+    const zipPath = join(work, `${entry.slug}.zip`);
+    const outDir = join(work, entry.slug);
+    writeFileSync(zipPath, zip);
+    mkdirSync(outDir);
+    execFileSync('unzip', ['-q', '-o', zipPath, '-d', outDir]);
+    removeIgnored(outDir);
+
+    const tops = readdirSync(outDir);
+    if (tops.length !== 1 || !existsSync(join(outDir, tops[0], 'SKILL.md'))) {
+      errors.push(`${entry.slug}: expected one folder with a SKILL.md in ${file}, found ${tops.join(', ')}`);
+      continue;
+    }
+    const pkg = join(outDir, tops[0]);
+    const fm = readSkillFrontmatter(readFileSync(join(pkg, 'SKILL.md'), 'utf8'));
+    const siteName = fm?.name ?? '';
+    let name = siteName;
+    let note = '';
+    if (!SKILL_NAME.test(name) && entry.name) {
+      name = entry.name;
+      setFrontmatterName(join(pkg, 'SKILL.md'), name);
+      note = `- name: normalised from "${siteName}" (scripts/sync-config.json). Fix the name in the site's SKILL.md.\n`;
+    }
+    if (!SKILL_NAME.test(name) || name.length > 64) {
+      errors.push(`${entry.slug}: SKILL.md name "${siteName}" is not lowercase kebab-case (max 64 chars). Fix it on the site.`);
+      continue;
+    }
+    if (RESERVED_WORDS.test(name)) {
+      errors.push(`${entry.slug}: SKILL.md name "${name}" contains a reserved word (claude/anthropic).`);
+      continue;
+    }
+    if (synced.some((s) => s.name === name)) {
+      errors.push(`${entry.slug}: two skills resolve to the name "${name}".`);
+      continue;
+    }
+
+    writeFileSync(
+      join(pkg, 'SOURCE.md'),
+      [
+        '# Source',
+        '',
+        'Generated by `scripts/sync-site-skills.mjs`. Do not edit this folder by hand: change the skill in the site repo, merge it, and run the sync again.',
+        '',
+        `- repo: ${config.siteRepo}`,
+        `- sha: ${sha}`,
+        `- file: ${file}`,
+        `- page: https://autorfp.ai/skills/${entry.slug}`,
+        '',
+      ].join('\n') + note,
+    );
+    synced.push({ name, slug: entry.slug, pkg });
+  }
+
+  if (errors.length) {
+    console.error(`\nSync stopped; skills/ was not changed:\n- ${errors.join('\n- ')}`);
+    process.exit(1);
+  }
+
+  mkdirSync(skillsDir, { recursive: true });
+  const keep = new Set(synced.map((s) => s.name));
+  for (const existing of readdirSync(skillsDir)) {
+    if (!keep.has(existing)) {
+      rmSync(join(skillsDir, existing), { recursive: true, force: true });
+      console.log(`removed  ${existing}`);
+    }
+  }
+  for (const s of synced) {
+    const dest = join(skillsDir, s.name);
+    rmSync(dest, { recursive: true, force: true });
+    cpSync(s.pkg, dest, { recursive: true });
+    console.log(`synced   ${s.name.padEnd(28)} <- ${s.slug}`);
+  }
+  console.log(`\n${synced.length} skills synced from ${sha.slice(0, 9)}. Review with: git status skills`);
+} finally {
+  rmSync(work, { recursive: true, force: true });
+}
